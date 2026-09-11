@@ -37,11 +37,11 @@
 #ifndef XI_TERMINAL_COMMAND_HPP
 #define XI_TERMINAL_COMMAND_HPP
 
-#include "../Collection/Map.hpp"
-#include "../Collection/String.hpp"
+#include "../Xi/Map.hpp"
+#include "../Xi/String.hpp"
 
 using namespace Xi;
-using namespace Collection;
+using namespace Xi;
 
 namespace Terminal {
 

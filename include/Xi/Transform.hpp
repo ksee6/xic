@@ -6,7 +6,7 @@
 #ifndef XI_CORE_TRANSFORM_HPP
 #define XI_CORE_TRANSFORM_HPP
 
-#include "../Collection/String.hpp"
+#include "../Xi/String.hpp"
 #include "Math.hpp"
 #include "Time.hpp"
 

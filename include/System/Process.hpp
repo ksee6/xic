@@ -7,8 +7,8 @@
 #ifndef XI_SYSTEM_PROCESS_HPP
 #define XI_SYSTEM_PROCESS_HPP
 
-#include "../Collection/Stream.hpp"
-#include "../Collection/String.hpp"
+#include "../Xi/String.hpp"
+#include "../Xi/Func.hpp"
 #include <fcntl.h>
 #include <poll.h>
 #include <signal.h>
@@ -17,7 +17,7 @@
 
 namespace System {
 
-using namespace Collection;
+using namespace Xi;
 
 /**
  * @class Process
@@ -30,20 +30,22 @@ private:
   int _pipe_out[2] = {-1, -1};
   int _pipe_err[2] = {-1, -1};
 
+public:
   /**
    * @class PipeStream
-   * @brief Concrete implementation of VirtualStream for process pipes.
+   * @brief Stream for process pipes.
    */
-  class PipeStream : public VirtualStream<String> {
+  class PipeStream {
   public:
     int fd = -1;
     bool isWrite = false;
     Array<String> buffer;
     bool closed = false;
+    Func<void(const String &)> onPush;
 
     PipeStream(bool writeMode) : isWrite(writeMode) {}
 
-    void push(const String &val) override {
+    void push(const String &val) {
       if (closed || fd == -1)
         return;
       if (isWrite) {
@@ -55,19 +57,19 @@ private:
       }
     }
 
-    void unshift(const String &val) override { buffer.unshift(val); }
+    void unshift(const String &val) { buffer.unshift(val); }
 
-    usz size() const override { return buffer.size(); }
+    usz size() const { return buffer.size(); }
 
-    String shift() override { return buffer.shift(); }
+    String shift() { return buffer.shift(); }
 
-    String pop() override { return buffer.pop(); }
+    String pop() { return buffer.pop(); }
 
-    void splice(usz start, usz length) override {
+    void splice(usz start, usz length) {
       buffer.splice(start, length);
     }
 
-    void destroy() override {
+    void destroy() {
       if (fd != -1) {
         ::close(fd);
         fd = -1;
@@ -102,10 +104,9 @@ public:
   String file;       ///< Executable path or name.
   Array<String> arg; ///< Command line arguments.
 
-  // Polymorphic stream access
-  VirtualStream<String> &stdin = _in;   ///< Standard input stream.
-  VirtualStream<String> &stdout = _out; ///< Standard output stream.
-  VirtualStream<String> &stderr = _err; ///< Standard error stream.
+  PipeStream &stdin = _in;   ///< Standard input stream.
+  PipeStream &stdout = _out; ///< Standard output stream.
+  PipeStream &stderr = _err; ///< Standard error stream.
 
   bool inheritStdin = false;
   bool inheritStderr = false;

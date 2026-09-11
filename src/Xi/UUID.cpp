@@ -58,6 +58,12 @@ UUID UUID::fromBytes(const u8 bytes[16]) {
 // Generation
 // -------------------------------------------------------------------------
 
+static u64 getGregorian100ns() {
+    auto now = std::chrono::system_clock::now();
+    u64 us = (u64)std::chrono::duration_cast<std::chrono::microseconds>(now.time_since_epoch()).count();
+    return us * 10ULL + 122192928000000000ULL;
+}
+
 UUID UUID::random() {
     UUID u;
     u8 buf[16];
@@ -70,6 +76,58 @@ UUID UUID::random() {
     return u;
 }
 
+UUID UUID::v1() {
+    u64 intervals = getGregorian100ns();
+    u32 time_low = (u32)intervals;
+    u16 time_mid = (u16)(intervals >> 32);
+    u16 time_hi = (u16)((intervals >> 48) & 0x0FFF) | 0x1000;
+
+    u8 randBuf[8];
+    randomFill(randBuf, 8);
+    u16 clock_seq = ((u16)randBuf[0] << 8) | randBuf[1];
+    clock_seq = (clock_seq & 0x3FFF) | 0x8000;
+
+    UUID u;
+    u.hi = ((u64)time_low << 32) | ((u64)time_mid << 16) | time_hi;
+    u.lo = ((u64)clock_seq << 48);
+    for (int i = 2; i < 8; i++) u.lo |= ((u64)randBuf[i] << (56 - i * 8));
+    return u;
+}
+
+UUID UUID::v2(u8 localDomain, u32 localId) {
+    u64 intervals = getGregorian100ns();
+    u16 time_mid = (u16)(intervals >> 32);
+    u16 time_hi = (u16)((intervals >> 48) & 0x0FFF) | 0x2000;
+
+    u8 randBuf[8];
+    randomFill(randBuf, 8);
+    u16 clock_seq = ((u16)randBuf[0] << 8) | localDomain;
+    clock_seq = (clock_seq & 0x3FFF) | 0x8000;
+
+    UUID u;
+    u.hi = ((u64)localId << 32) | ((u64)time_mid << 16) | time_hi;
+    u.lo = ((u64)clock_seq << 48);
+    for (int i = 2; i < 8; i++) u.lo |= ((u64)randBuf[i] << (56 - i * 8));
+    return u;
+}
+
+UUID UUID::v6() {
+    u64 intervals = getGregorian100ns();
+    u64 time_high_mid = intervals >> 12;
+    u16 time_low_and_version = (u16)(intervals & 0x0FFF) | 0x6000;
+
+    u8 randBuf[8];
+    randomFill(randBuf, 8);
+    u16 clock_seq = ((u16)randBuf[0] << 8) | randBuf[1];
+    clock_seq = (clock_seq & 0x3FFF) | 0x8000;
+
+    UUID u;
+    u.hi = (time_high_mid << 16) | time_low_and_version;
+    u.lo = ((u64)clock_seq << 48);
+    for (int i = 2; i < 8; i++) u.lo |= ((u64)randBuf[i] << (56 - i * 8));
+    return u;
+}
+
 UUID UUID::v7() {
     auto now = std::chrono::system_clock::now();
     u64 ms = (u64)std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -79,19 +137,22 @@ UUID UUID::v7() {
     randomFill(randBuf, 10);
 
     UUID u;
-    // 48-bit timestamp in high 48 bits of hi
     u.hi = (ms & 0x0000FFFFFFFFFFFFULL) << 16;
-    // 4-bit version = 7
     u.hi |= 0x0000000000007000ULL;
-    // 12 bits of rand_a
     u16 rand_a = ((u16)randBuf[0] << 8) | randBuf[1];
     u.hi |= (rand_a & 0x0FFF);
 
-    // 64 bits of lo: 2-bit variant (10xx) + 62 bits of rand_b
     u.lo = 0;
     for (int i = 2; i < 10; i++) u.lo = (u.lo << 8) | randBuf[i];
     u.lo = (u.lo & 0x3FFFFFFFFFFFFFFFULL) | 0x8000000000000000ULL;
 
+    return u;
+}
+
+UUID UUID::v8(const u8 customData[16]) {
+    UUID u = fromBytes(customData);
+    u.hi = (u.hi & 0xFFFFFFFFFFFF0FFFULL) | 0x0000000000008000ULL;
+    u.lo = (u.lo & 0x3FFFFFFFFFFFFFFFULL) | 0x8000000000000000ULL;
     return u;
 }
 
@@ -186,7 +247,135 @@ namespace {
             }
         }
     };
+
+    struct MD5Ctx {
+        u32 state[4];
+        u32 count[2];
+        u8  buffer[64];
+
+        static inline u32 F(u32 x, u32 y, u32 z) { return (x & y) | (~x & z); }
+        static inline u32 G(u32 x, u32 y, u32 z) { return (x & z) | (y & ~z); }
+        static inline u32 H(u32 x, u32 y, u32 z) { return x ^ y ^ z; }
+        static inline u32 I(u32 x, u32 y, u32 z) { return y ^ (x | ~z); }
+        static inline u32 rotl(u32 x, int n) { return (x << n) | (x >> (32 - n)); }
+
+        static inline void FF(u32 &a, u32 b, u32 c, u32 d, u32 x, u32 s, u32 ac) {
+            a = rotl(a + F(b, c, d) + x + ac, s) + b;
+        }
+        static inline void GG(u32 &a, u32 b, u32 c, u32 d, u32 x, u32 s, u32 ac) {
+            a = rotl(a + G(b, c, d) + x + ac, s) + b;
+        }
+        static inline void HH(u32 &a, u32 b, u32 c, u32 d, u32 x, u32 s, u32 ac) {
+            a = rotl(a + H(b, c, d) + x + ac, s) + b;
+        }
+        static inline void II(u32 &a, u32 b, u32 c, u32 d, u32 x, u32 s, u32 ac) {
+            a = rotl(a + I(b, c, d) + x + ac, s) + b;
+        }
+
+        void transform(const u8 block[64]) {
+            u32 a = state[0], b = state[1], c = state[2], d = state[3], x[16];
+            for (int i = 0; i < 16; i++) {
+                x[i] = (u32)block[i*4] | ((u32)block[i*4+1] << 8) |
+                       ((u32)block[i*4+2] << 16) | ((u32)block[i*4+3] << 24);
+            }
+            FF(a, b, c, d, x[ 0], 7, 0xd76aa478); FF(d, a, b, c, x[ 1], 12, 0xe8c7b756);
+            FF(c, d, a, b, x[ 2], 17, 0x242070db); FF(b, c, d, a, x[ 3], 22, 0xc1bdceee);
+            FF(a, b, c, d, x[ 4], 7, 0xf57c0faf); FF(d, a, b, c, x[ 5], 12, 0x4787c62a);
+            FF(c, d, a, b, x[ 6], 17, 0xa8304613); FF(b, c, d, a, x[ 7], 22, 0xfd469501);
+            FF(a, b, c, d, x[ 8], 7, 0x698098d8); FF(d, a, b, c, x[ 9], 12, 0x8b44f7af);
+            FF(c, d, a, b, x[10], 17, 0xffff5bb1); FF(b, c, d, a, x[11], 22, 0x895cd7be);
+            FF(a, b, c, d, x[12], 7, 0x6b901122); FF(d, a, b, c, x[13], 12, 0xfd987193);
+            FF(c, d, a, b, x[14], 17, 0xa679438e); FF(b, c, d, a, x[15], 22, 0x49b40821);
+
+            GG(a, b, c, d, x[ 1], 5, 0xf61e2562); GG(d, a, b, c, x[ 6], 9, 0xc040b340);
+            GG(c, d, a, b, x[11], 14, 0x265e5a51); GG(b, c, d, a, x[ 0], 20, 0xe9b6c7aa);
+            GG(a, b, c, d, x[ 5], 5, 0xd62f105d); GG(d, a, b, c, x[10], 9,  0x2441453);
+            GG(c, d, a, b, x[15], 14, 0xd8a1e681); GG(b, c, d, a, x[ 4], 20, 0xe7d3fbc8);
+            GG(a, b, c, d, x[ 9], 5, 0x21e1cde6); GG(d, a, b, c, x[14], 9, 0xc33707d6);
+            GG(c, d, a, b, x[ 3], 14, 0xf4d50d87); GG(b, c, d, a, x[ 8], 20, 0x455a14ed);
+            GG(a, b, c, d, x[13], 5, 0xa9e3e905); GG(d, a, b, c, x[ 2], 9, 0xfcefa3f8);
+            GG(c, d, a, b, x[ 7], 14, 0x676f02d9); GG(b, c, d, a, x[12], 20, 0x8d2a4c8a);
+
+            HH(a, b, c, d, x[ 5], 4, 0xfffa3942); HH(d, a, b, c, x[ 8], 11, 0x8771f681);
+            HH(c, d, a, b, x[11], 16, 0x6d9d6122); HH(b, c, d, a, x[14], 23, 0xfde5380c);
+            HH(a, b, c, d, x[ 1], 4, 0xa4beea44); HH(d, a, b, c, x[ 4], 11, 0x4bdecfa9);
+            HH(c, d, a, b, x[ 7], 16, 0xf6bb4b60); HH(b, c, d, a, x[10], 23, 0xbebfbc70);
+            HH(a, b, c, d, x[13], 4, 0x289b7ec6); HH(d, a, b, c, x[ 0], 11, 0xeaa127fa);
+            HH(c, d, a, b, x[ 3], 16, 0xd4ef3085); HH(b, c, d, a, x[ 6], 23,  0x4881d05);
+            HH(a, b, c, d, x[ 9], 4, 0xd9d4d039); HH(d, a, b, c, x[12], 11, 0xe6db99e5);
+            HH(c, d, a, b, x[15], 16, 0x1fa27cf8); HH(b, c, d, a, x[ 2], 23, 0xc4ac5665);
+
+            II(a, b, c, d, x[ 0], 6, 0xf4292244); II(d, a, b, c, x[ 7], 10, 0x432aff97);
+            II(c, d, a, b, x[14], 15, 0xab9423a7); II(b, c, d, a, x[ 5], 21, 0xfc93a039);
+            II(a, b, c, d, x[12], 6, 0x655b59c3); II(d, a, b, c, x[ 3], 10, 0x8f0ccc92);
+            II(c, d, a, b, x[10], 15, 0xffeff47d); II(b, c, d, a, x[ 1], 21, 0x85845dd1);
+            II(a, b, c, d, x[ 8], 6, 0x6fa87e4f); II(d, a, b, c, x[15], 10, 0xfe2ce6e0);
+            II(c, d, a, b, x[ 6], 15, 0xa3014314); II(b, c, d, a, x[13], 21, 0x4e0811a1);
+            II(a, b, c, d, x[ 4], 6, 0xf7537e82); II(d, a, b, c, x[11], 10, 0xbd3af235);
+            II(c, d, a, b, x[ 2], 15, 0x2ad7d2bb); II(b, c, d, a, x[ 9], 21, 0xeb86d391);
+
+            state[0] += a; state[1] += b; state[2] += c; state[3] += d;
+        }
+
+        void init() {
+            count[0] = count[1] = 0;
+            state[0] = 0x67452301; state[1] = 0xefcdab89;
+            state[2] = 0x98badcfe; state[3] = 0x10325476;
+        }
+
+        void update(const u8 *in, usz len) {
+            u32 i = 0, idx = (count[0] >> 3) & 63;
+            if ((count[0] += ((u32)len << 3)) < ((u32)len << 3)) count[1]++;
+            count[1] += ((u32)len >> 29);
+            u32 partLen = 64 - idx;
+            if (len >= partLen) {
+                std::memcpy(&buffer[idx], in, partLen);
+                transform(buffer);
+                for (i = partLen; i + 63 < len; i += 64) transform(&in[i]);
+                idx = 0;
+            }
+            std::memcpy(&buffer[idx], &in[i], len - i);
+        }
+
+        void final(u8 digest[16]) {
+            u8 bits[8];
+            for (int i = 0; i < 4; i++) {
+                bits[i] = (u8)((count[0] >> (i * 8)) & 0xff);
+                bits[i + 4] = (u8)((count[1] >> (i * 8)) & 0xff);
+            }
+            u32 idx = (count[0] >> 3) & 63;
+            u32 padLen = (idx < 56) ? (56 - idx) : (120 - idx);
+            static const u8 PADDING[64] = { 0x80 };
+            update(PADDING, padLen);
+            update(bits, 8);
+            for (int i = 0; i < 4; i++) {
+                digest[i * 4]     = (u8)(state[i] & 0xff);
+                digest[i * 4 + 1] = (u8)((state[i] >> 8) & 0xff);
+                digest[i * 4 + 2] = (u8)((state[i] >> 16) & 0xff);
+                digest[i * 4 + 3] = (u8)((state[i] >> 24) & 0xff);
+            }
+        }
+    };
 } // anonymous namespace
+
+UUID UUID::v3(const UUID& ns, const String& name) {
+    u8 nsBytes[16];
+    ns.toBytes(nsBytes);
+
+    MD5Ctx md5;
+    md5.init();
+    md5.update(nsBytes, 16);
+    md5.update((const u8*)name.c_str(), name.length());
+
+    u8 digest[16];
+    md5.final(digest);
+
+    // RFC 4122 v3: version = 3, variant = 2 (10xx)
+    digest[6] = (digest[6] & 0x0F) | 0x30;
+    digest[8] = (digest[8] & 0x3F) | 0x80;
+
+    return fromBytes(digest);
+}
 
 UUID UUID::v5(const UUID& ns, const String& name) {
     u8 nsBytes[16];

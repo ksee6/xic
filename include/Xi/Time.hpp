@@ -7,10 +7,10 @@
 #ifndef XI_CORE_TIME_HPP
 #define XI_CORE_TIME_HPP
 
-#include "../Collection/String.hpp"
-#include "Primitives.hpp"
+#include "../Xi/String.hpp"
+#include "Xi.hpp"
 
-using namespace Collection;
+using namespace Xi;
 
 namespace Xi {
 

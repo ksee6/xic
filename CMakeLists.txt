@@ -14,30 +14,19 @@ endif()
 add_link_options(-fno-sanitize=all)
 
 # Options
-option(XI_BUILD_HARDWARE "Build Hardware Support (DHT/MPU/GPS)" ON)
 option(XI_BUILD_TLS "Build TLS/HTTP Support (mbedTLS)" ON)
 option(XI_BUILD_DEFLATE "Build DEFLATE Compression (miniz)" ON)
 option(XI_BUILD_LZ4 "Build LZ4 Compression" ON)
 option(XI_BUILD_ZSTD "Build Zstandard Compression" ON)
 option(XI_BUILD_AS_OBJECTS "Build as an OBJECT library" ON)
 
-# --- Dependencies ---
-include(FetchContent)
-FetchContent_Declare(
-    monocypher
-    GIT_REPOSITORY https://github.com/LoupVaillant/Monocypher.git
-    GIT_TAG        4.0.2
-)
-FetchContent_MakeAvailable(monocypher)
-
 # --- Automatic Source Discovery ---
 # Core components that are always included
 file(GLOB_RECURSE CORE_SOURCES 
-    "${monocypher_SOURCE_DIR}/src/monocypher.c"
     "src/Xi/*.cpp"
-    "src/Collection/*.cpp"
-    "src/Encoding/*.cpp"
-    "src/Security/*.cpp"
+    "src/Math/*.cpp"
+    "src/Data/*.cpp"
+    "src/Sec/*.cpp"
     "src/Resource/*.cpp"
     "src/Terminal/*.cpp"
 )
@@ -45,6 +34,7 @@ file(GLOB_RECURSE CORE_SOURCES
 # Filter out optional sources from the core list to avoid double-inclusion or missing dependencies
 list(FILTER CORE_SOURCES EXCLUDE REGEX "src/Hardware/.*")
 list(FILTER CORE_SOURCES EXCLUDE REGEX "src/Graphics/.*")
+list(FILTER CORE_SOURCES EXCLUDE REGEX "src/Xi/Math.cpp")
 list(FILTER CORE_SOURCES EXCLUDE REGEX "src/Resource/TLS.cpp")
 list(FILTER CORE_SOURCES EXCLUDE REGEX "src/Resource/HTTP.cpp")
 list(FILTER CORE_SOURCES EXCLUDE REGEX "src/Resource/ZIPArchive.cpp")
@@ -53,6 +43,7 @@ list(FILTER CORE_SOURCES EXCLUDE REGEX "src/Resource/LZ4.cpp")
 list(FILTER CORE_SOURCES EXCLUDE REGEX "src/Resource/Zstd.cpp")
 
 set(XI_SOURCES ${CORE_SOURCES})
+
 
 # --- Main Target Definition ---
 if(XI_BUILD_AS_OBJECTS)
@@ -67,9 +58,6 @@ endif()
 target_include_directories(Xi PUBLIC 
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>
-)
-target_include_directories(Xi PRIVATE 
-    ${monocypher_SOURCE_DIR}/src
 )
 
 # --- Fail-safe Dependency Handling ---
@@ -149,12 +137,6 @@ if(XI_BUILD_ZSTD)
     else()
         message(STATUS "Zstandard not found. Skipping ZSTD.")
     endif()
-endif()
-
-# Hardware
-if(XI_BUILD_HARDWARE)
-    file(GLOB HARDWARE_SOURCES "src/Hardware/*.cpp")
-    target_sources(Xi PRIVATE ${HARDWARE_SOURCES})
 endif()
 
 # Platform dependencies (Linux: pthread + rt for POSIX timers)

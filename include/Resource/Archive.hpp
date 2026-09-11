@@ -14,13 +14,13 @@
 #define XI_RESOURCE_ARCHIVE_HPP
 
 #include "File.hpp"
-#include "../Collection/Map.hpp"
+#include "../Xi/Map.hpp"
 #include "../Xi/Func.hpp"
 
 namespace Resource {
 
 using namespace Xi;
-using namespace Collection;
+using namespace Xi;
 
 /**
  * @struct VFSEntry

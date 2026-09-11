@@ -3,8 +3,9 @@
  * @brief Implementation of random number generation utilities.
  */
 
-#include "../../include/Xi/Random.hpp"
-#include "../../include/Security/Crypto.hpp"
+#include "Xi/Xi.hpp"
+#include "Xi/Random.hpp"
+
 #if !defined(__KERNEL__) && !defined(XI_NO_STD)
 #include <fcntl.h>
 #include <sys/time.h>
@@ -29,150 +30,159 @@ extern "C" __declspec(dllimport) unsigned char __stdcall SystemFunction036(void*
 namespace Xi {
 
 alignas(64) u32 _randomPool[20] = {
-    123456789, 362436069, 521288629, 88675123, 0, 0, 0, 0, 0, 0,
-    0,         0,         0,         0,        0, 0, 0, 0, 0, 0};
+    0x243f6a88, 0x85a308d3, 0x13198a2e, 0x03707344,
+    0xa4093822, 0x299f31d0, 0x082efa98, 0xec4e6c89,
+    0x452821e6, 0x38d01377, 0xbe5466cf, 0x34e90c6c,
+    0xc0ac29b7, 0xc97c50dd, 0x3f84d5b5, 0xb5470917,
+    0x9216d5d9, 0x8979fb1b, 0xd1310ba6, 0x98dfb5ac
+};
 bool _randomInitialized = false;
+u32 _randomCounter = 0;
 
-u32 randomNext() {
-  u32 t = _randomPool[3];
-  u32 s = _randomPool[0];
-  _randomPool[3] = _randomPool[2];
-  _randomPool[2] = _randomPool[1];
-  _randomPool[1] = s;
-  t ^= t << 11;
-  t ^= t >> 8;
-  _randomPool[0] = t ^ s ^ (s >> 19);
-  return _randomPool[0];
+static inline u32 rotl32(u32 v, int n) {
+  return (v << n) | (v >> (32 - n));
 }
 
-void randomSeed(u32 s, bool overwrite) {
+static inline void quarterRound(u32 &a, u32 &b, u32 &c, u32 &d) {
+  a += b; d ^= a; d = rotl32(d, 16);
+  c += d; b ^= c; b = rotl32(b, 12);
+  a += b; d ^= a; d = rotl32(d, 8);
+  c += d; b ^= c; b = rotl32(b, 7);
+}
+
+// Mixes the entire 20-word pool using a permutation round
+static void advancePool() {
+  _randomCounter++;
+  _randomPool[16] += _randomCounter;
+  _randomPool[17] ^= _randomPool[16];
+  _randomPool[18] += _randomPool[17];
+  _randomPool[19] ^= rotl32(_randomPool[18], 13);
+
+  // Column rounds across 16 main words
+  quarterRound(_randomPool[0], _randomPool[4], _randomPool[8],  _randomPool[12]);
+  quarterRound(_randomPool[1], _randomPool[5], _randomPool[9],  _randomPool[13]);
+  quarterRound(_randomPool[2], _randomPool[6], _randomPool[10], _randomPool[14]);
+  quarterRound(_randomPool[3], _randomPool[7], _randomPool[11], _randomPool[15]);
+
+  // Diagonal rounds with mixing from extra pool words
+  quarterRound(_randomPool[0], _randomPool[5], _randomPool[10], _randomPool[15]);
+  quarterRound(_randomPool[1], _randomPool[6], _randomPool[11], _randomPool[12]);
+  quarterRound(_randomPool[2], _randomPool[7], _randomPool[8],  _randomPool[13]);
+  quarterRound(_randomPool[3], _randomPool[4], _randomPool[9],  _randomPool[14]);
+
+  _randomPool[0] ^= _randomPool[16];
+  _randomPool[5] ^= _randomPool[17];
+  _randomPool[10] ^= _randomPool[18];
+  _randomPool[15] ^= _randomPool[19];
+}
+
+void randomSeed(u64 seed, bool overwrite) {
   if (!overwrite && _randomInitialized)
     return;
+
+  u64 s = seed;
   for (int i = 0; i < 20; i++) {
-    s = 1812433253U * (s ^ (s >> 30)) + i;
-    _randomPool[i] = s;
+    s += 0x9e3779b97f4a7c15ULL;
+    u64 z = s;
+    z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9ULL;
+    z = (z ^ (z >> 27)) * 0x94d049bb133111ebULL;
+    _randomPool[i] = (u32)(z ^ (z >> 31));
   }
-  for (int i = 0; i < 10; i++)
-    randomNext();
+  _randomCounter = 0;
+  for (int i = 0; i < 4; i++) {
+    advancePool();
+  }
   _randomInitialized = true;
 }
 
 void randomSeed(bool overwrite) {
   if (!overwrite && _randomInitialized)
     return;
+
+  bool filled = false;
 #if defined(__KERNEL__)
   get_random_bytes(_randomPool, sizeof(_randomPool));
-  _randomInitialized = true;
+  filled = true;
 #elif defined(ESP_PLATFORM)
   for (int i = 0; i < 20; i++)
     _randomPool[i] = esp_random();
-  _randomInitialized = true;
+  filled = true;
 #elif defined(_WIN32)
   if (SystemFunction036(_randomPool, sizeof(_randomPool))) {
-    _randomInitialized = true;
+    filled = true;
   }
 #elif defined(ARDUINO)
   u32 seed = 0;
   for (int i = 0; i < 16; i++) {
     seed = (seed << 2) | (analogRead(0) & 3);
   }
-  randomSeed(seed, overwrite);
-#elif defined(XI_NO_STD) && defined(__linux__)
-  #if defined(__x86_64__)
-    long ret;
-    __asm__ volatile (
-      "syscall"
-      : "=a"(ret)
-      : "a"(318), "D"(_randomPool), "S"(sizeof(_randomPool)), "d"(0)
-      : "rcx", "r11", "memory"
-    );
-    if (ret > 0) {
-      _randomInitialized = true;
-    }
-  #else
-    randomSeed((u32)987654321, overwrite);
-  #endif
+  randomSeed((u64)seed, overwrite);
+  return;
 #elif defined(__linux__) || defined(__APPLE__)
   int fd = open("/dev/urandom", O_RDONLY);
   if (fd >= 0) {
     ssize_t n = read(fd, _randomPool, sizeof(_randomPool));
-    (void)n;
     close(fd);
-    _randomInitialized = true;
+    if (n == (ssize_t)sizeof(_randomPool)) {
+      filled = true;
+    }
   }
-#else
-  randomSeed((u32)987654321, overwrite);
 #endif
 
-#if defined(__linux__)
-  #if defined(XI_NO_STD)
-    #if defined(__x86_64__)
-      long ret;
-      __asm__ volatile (
-        "syscall"
-        : "=a"(ret)
-        : "a"(28), "D"(_randomPool), "S"(sizeof(_randomPool)), "d"(18)
-        : "rcx", "r11", "memory"
-      );
-    #endif
-  #elif __has_include(<sys/mman.h>)
-    madvise(_randomPool, sizeof(_randomPool), MADV_WIPEONFORK);
-  #endif
+  if (filled) {
+    _randomInitialized = true;
+    _randomCounter = 0;
+    advancePool();
+  } else {
+    // Fallback using time and memory address entropy
+    u64 entropy = 0x9e3779b97f4a7c15ULL;
+    struct timeval tv;
+    if (gettimeofday(&tv, nullptr) == 0) {
+      entropy ^= ((u64)tv.tv_sec << 32) | (u64)tv.tv_usec;
+    }
+    entropy ^= (u64)(uintptr_t)&_randomPool;
+    randomSeed(entropy, overwrite);
+  }
+
+#if defined(__linux__) && __has_include(<sys/mman.h>)
+  madvise(_randomPool, sizeof(_randomPool), MADV_WIPEONFORK);
 #endif
+}
+
+u32 random() {
+  if (!_randomInitialized) {
+    randomSeed(false);
+  }
+  advancePool();
+  return _randomPool[0] ^ _randomPool[12];
 }
 
 u32 random(u32 max) {
-  if (max == 0)
-    return 0;
-  return randomNext() % max;
+  if (max == 0) return 0;
+  return random() % max;
 }
 
 i32 random(i32 min, i32 max) {
-  if (min >= max)
-    return min;
-  return min + (i32)(randomNext() % (u32)(max - min));
+  if (min >= max) return min;
+  return min + (i32)(random() % (u32)(max - min));
 }
-
-f32 randomFloat() { return (f32)randomNext() / 4294967295.0f; }
 
 void randomFill(u8 *buffer, usz size) {
-  usz i = 0;
-  while (i + 4 <= size) {
-    u32 r = randomNext();
-    memcpy(buffer + i, &r, 4);
-    i += 4;
+  if (!buffer || size == 0) return;
+  if (!_randomInitialized) {
+    randomSeed(false);
   }
-  if (i < size) {
-    u32 r = randomNext();
-    while (i < size) {
-      buffer[i++] = (u8)(r & 0xFF);
-      r >>= 8;
-    }
-  }
-}
 
-/**
- * @brief Fills a string with pseudo-random bytes.
- */
-void randomFill(String &s, usz len) {
-  if (len == 0 || s.size() < len)
-    len = s.size();
-  u8 *raw = const_cast<u8 *>(reinterpret_cast<const u8 *>(s.data()));
-  if (raw)
-    randomFill(raw, len);
-}
-
-/**
- * @brief Utility for seeding the PRNG using string hash.
- */
-inline void randomSeed(String str) {
-  u32 h = 5381;
-  int c;
-  unsigned char *d = (unsigned char *)str.data();
-  while (d && (c = *d++)) {
-    h = ((h << 5) + h) + c;
+  usz offset = 0;
+  while (offset + 64 <= size) {
+    advancePool();
+    memcpy(buffer + offset, _randomPool, 64);
+    offset += 64;
   }
-  randomSeed(h);
+  if (offset < size) {
+    advancePool();
+    memcpy(buffer + offset, _randomPool, size - offset);
+  }
 }
 
 } // namespace Xi

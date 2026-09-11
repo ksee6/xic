@@ -21,7 +21,7 @@
 namespace Resource {
 
 using namespace Xi;
-using namespace Collection;
+using namespace Xi;
 
 /**
  * @struct TLSCert

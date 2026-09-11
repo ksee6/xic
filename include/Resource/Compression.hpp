@@ -12,13 +12,13 @@
 #ifndef XI_RESOURCE_COMPRESSION_HPP
 #define XI_RESOURCE_COMPRESSION_HPP
 
-#include "../Collection/Array.hpp"
-#include "../Collection/String.hpp"
+#include "../Xi/Array.hpp"
+#include "../Xi/String.hpp"
 
 namespace Resource {
 
 using namespace Xi;
-using namespace Collection;
+using namespace Xi;
 
 /**
  * @class Compression

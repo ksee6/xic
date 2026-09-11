@@ -6,11 +6,11 @@
 #ifndef XI_TERMINAL_PROMPT_HPP
 #define XI_TERMINAL_PROMPT_HPP
 
-#include "../Collection/String.hpp"
-#include "../Collection/Array.hpp"
+#include "../Xi/String.hpp"
+#include "../Xi/Array.hpp"
 
 using namespace Xi;
-using namespace Collection;
+using namespace Xi;
 
 namespace Terminal {
 namespace Prompt {

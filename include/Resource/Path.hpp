@@ -1,16 +1,15 @@
 #ifndef XI_CORE_PATH_HPP
 #define XI_CORE_PATH_HPP
 
-#include "../Collection/Array.hpp"
-#include "../Collection/Map.hpp"
-#include "../Collection/String.hpp"
-#include "../Xi/Primitives.hpp"
+#include "../Xi/Array.hpp"
+#include "../Xi/Map.hpp"
+#include "../Xi/String.hpp"
+#include "../Xi/Xi.hpp"
 #include <cstdio>
 
 namespace Resource {
 
 using namespace Xi;
-using namespace Collection;
 
 class Path;
 
@@ -75,85 +74,10 @@ private:
 public:
     NumericalPath() {}
     NumericalPath(const Path &hn);
-    NumericalPath(const char *str) : NumericalPath(String(str)) {}
-    NumericalPath& operator=(const String &str) {
-        *this = NumericalPath(str);
-        return *this;
-    }
-    NumericalPath& operator=(const char *str) {
-        *this = NumericalPath(String(str));
-        return *this;
-    }
-
-    NumericalPath(const String &str) {
-        if (str.isEmpty()) return;
-        if (str == "halt" || str == "4294967295") {
-            push(0xFFFFFFFF);
-            return;
-        }
-
-        // Comma-separated segments
-        if (str.find(",") != -1) {
-            Array<String> parts = str.split(",");
-            for (usz i = 0; i < parts.size(); i++)
-                push((u32)parseLong(parts[i]));
-            return;
-        }
-
-        // Bracketed IPv6 notation
-        if (str.size() > 0 && str[0] == '[') {
-            long long cb = str.find("]");
-            if (cb == -1) return;
-            String body = str.substring(1, (usz)cb);
-            push(6); // IPv6
-            _parseIPv6Body(body);
-            if ((usz)cb + 2 < str.size() && str[(usz)cb + 1] == ':')
-                push((u32)parseLong(str.substring((usz)cb + 2)));
-            return;
-        }
-
-        int colonCount = 0;
-        for (usz i = 0; i < str.size(); i++)
-            if (str[i] == ':') colonCount++;
-
-        // IPv6 (2+ colons)
-        if (colonCount >= 2) {
-            push(6); // IPv6
-            _parseIPv6Body(str);
-            return;
-        }
-
-        // IPv4 with optional port
-        String host = str;
-        String portStr;
-        if (colonCount == 1) {
-            long long ci = str.find(":");
-            host = str.substring(0, (usz)ci);
-            portStr = str.substring((usz)ci + 1);
-        }
-
-        Array<String> octets = host.split(".");
-        if (octets.size() == 4) {
-            bool allNum = true;
-            for (usz i = 0; i < 4 && allNum; i++)
-                allNum = _strIsNumeric(octets[i]);
-            if (allNum) {
-                push(4); // IPv4
-                for (usz i = 0; i < 4; i++)
-                    push((u32)parseLong(octets[i]));
-                if (!portStr.isEmpty())
-                    push((u32)parseLong(portStr));
-                return;
-            }
-        }
-
-        // Fallback dotted segments
-        Array<String> parts = host.split(".");
-        for (usz i = 0; i < parts.size(); i++)
-            push((u32)parseLong(parts[i]));
-        if (!portStr.isEmpty())
-            push((u32)parseLong(portStr));
-    }
+    NumericalPath(const char *str);
+    NumericalPath(const String &str);
+    NumericalPath& operator=(const String &str);
+    NumericalPath& operator=(const char *str);
 
     NumericalPath common(const NumericalPath &other) const {
         NumericalPath res;
@@ -1094,6 +1018,88 @@ public:
         return res;
     }
 };
+
+inline NumericalPath::NumericalPath(const String &str) {
+    if (str.isEmpty()) return;
+    if (str == "halt" || str == "4294967295") {
+        push(0xFFFFFFFF);
+        return;
+    }
+
+    // Comma-separated segments
+    if (str.find(",") != -1) {
+        Array<String> parts = str.split(",");
+        for (usz i = 0; i < parts.size(); i++)
+            push((u32)parseLong(parts[i]));
+        return;
+    }
+
+    // Bracketed IPv6 notation
+    if (str.size() > 0 && str[0] == '[') {
+        long long cb = str.find("]");
+        if (cb == -1) return;
+        String body = str.substring(1, (usz)cb);
+        push(6); // IPv6
+        _parseIPv6Body(body);
+        if ((usz)cb + 2 < str.size() && str[(usz)cb + 1] == ':')
+            push((u32)parseLong(str.substring((usz)cb + 2)));
+        return;
+    }
+
+    int colonCount = 0;
+    for (usz i = 0; i < str.size(); i++)
+        if (str[i] == ':') colonCount++;
+
+    // IPv6 (2+ colons)
+    if (colonCount >= 2) {
+        push(6); // IPv6
+        _parseIPv6Body(str);
+        return;
+    }
+
+    // IPv4 with optional port
+    String host = str;
+    String portStr;
+    if (colonCount == 1) {
+        long long ci = str.find(":");
+        host = str.substring(0, (usz)ci);
+        portStr = str.substring((usz)ci + 1);
+    }
+
+    Array<String> octets = host.split(".");
+    if (octets.size() == 4) {
+        bool allNum = true;
+        for (usz i = 0; i < 4 && allNum; i++)
+            allNum = _strIsNumeric(octets[i]);
+        if (allNum) {
+            push(4); // IPv4
+            for (usz i = 0; i < 4; i++)
+                push((u32)parseLong(octets[i]));
+            if (!portStr.isEmpty())
+                push((u32)parseLong(portStr));
+            return;
+        }
+    }
+
+    // Fallback dotted segments
+    Array<String> parts = host.split(".");
+    for (usz i = 0; i < parts.size(); i++)
+        push((u32)parseLong(parts[i]));
+    if (!portStr.isEmpty())
+        push((u32)parseLong(portStr));
+}
+
+inline NumericalPath::NumericalPath(const char *str) : NumericalPath(String(str)) {}
+
+inline NumericalPath& NumericalPath::operator=(const String &str) {
+    *this = NumericalPath(str);
+    return *this;
+}
+
+inline NumericalPath& NumericalPath::operator=(const char *str) {
+    *this = NumericalPath(String(str));
+    return *this;
+}
 
 inline NumericalPath::NumericalPath(const Path &hn) {
     if (hn.isHalt()) {

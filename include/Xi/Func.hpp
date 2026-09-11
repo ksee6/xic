@@ -6,7 +6,7 @@
 #ifndef XI_CORE_FUNC_HPP
 #define XI_CORE_FUNC_HPP
 
-#include "Primitives.hpp"
+#include "Xi.hpp"
 #if !defined(__KERNEL__) && !defined(XI_NO_STD) && !defined(MECA_EMBEDDED)
 #include <cstddef>
 #if defined(__linux__)

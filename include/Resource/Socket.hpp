@@ -7,12 +7,12 @@
 #ifndef XI_DATA_SOCKET_HPP
 #define XI_DATA_SOCKET_HPP
 
-#include "../Collection/Map.hpp"
+#include "../Xi/Map.hpp"
 #include "../Resource/Path.hpp"
-#include <Xi/Primitives.hpp>
+#include <Xi/Xi.hpp>
 #include "../Xi/Func.hpp"
 
-using namespace Collection;
+using namespace Xi;
 using namespace Xi;
 
 /**

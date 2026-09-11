@@ -6,12 +6,10 @@
 #ifndef XI_UUID_HPP
 #define XI_UUID_HPP
 
-#include "Primitives.hpp"
-#include "../Collection/String.hpp"
+#include "Xi.hpp"
+#include "String.hpp"
 
 namespace Xi {
-
-using namespace Collection;
 
 struct XI_EXPORT UUID {
     u64 hi = 0;
@@ -33,13 +31,18 @@ struct XI_EXPORT UUID {
     UUID(const char* str);
     explicit UUID(const u8 bytes[16]);
 
-    // ---- Generation (all types) ----
+    // ---- Generation (all versions: v1 through v8) ----
     static UUID random();
+    static UUID v1();
+    static UUID v2(u8 localDomain = 0, u32 localId = 0);
+    static UUID v3(const UUID& ns, const String& name);
     static UUID v4() { return random(); }
     static UUID v5(const UUID& ns, const String& name);
+    static UUID v6();
+    static UUID v7();
+    static UUID v8(const u8 customData[16]);
     static UUID fromName(const String& name, const UUID& ns);
     static UUID fromName(const String& name);
-    static UUID v7();
 
     // ---- Parsing ----
     static UUID fromString(const String& str);

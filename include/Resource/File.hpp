@@ -7,8 +7,8 @@
 #ifndef XI_CORE_FILE_HPP
 #define XI_CORE_FILE_HPP
 
-#include "../Collection/String.hpp"
-#include "../Xi/Primitives.hpp"
+#include "../Xi/String.hpp"
+#include "../Xi/Xi.hpp"
 
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -25,7 +25,7 @@
 
 namespace Resource {
 using namespace Xi;
-using namespace Collection;
+using namespace Xi;
 
 class SockBind;
 class SockStation;
