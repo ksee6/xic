@@ -1,6 +1,7 @@
 #include "../../include/Data/Yaml.hpp"
 #include "../../include/Xi/Map.hpp"
 #include "../../include/Xi/Xi.hpp"
+#include <cstdio>
 
 namespace Data {
 
@@ -419,12 +420,22 @@ static String emitValue(const Node<void> *node, int indentLevel, int indentSize,
   if (node->hasValue()) {
     if (auto s = dynamic_cast<const Node<String> *>(node))
       return s->value;
+    if (auto in = dynamic_cast<const Node<int> *>(node))
+      return String(in->value);
     if (auto i = dynamic_cast<const Node<long long> *>(node))
       return String(i->value);
+    if (auto u = dynamic_cast<const Node<u64> *>(node))
+      return String(u->value);
+    if (auto uz = dynamic_cast<const Node<usz> *>(node))
+      return String(uz->value);
     if (auto b = dynamic_cast<const Node<bool> *>(node))
       return b->value ? "true" : "false";
     if (auto f = dynamic_cast<const Node<f64> *>(node))
       return String(f->value);
+    if (auto f3 = dynamic_cast<const Node<f32> *>(node))
+      return String(f3->value);
+    String strVal = node->toString();
+    if (!strVal.isEmpty()) return strVal;
     return "null";
   }
 
@@ -483,12 +494,94 @@ static String emitValue(const Node<void> *node, int indentLevel, int indentSize,
   return res;
 }
 
+static String escapeJSON(const String &s) {
+  String out = "\"";
+  for (usz i = 0; i < s.size(); ++i) {
+    char c = s[i];
+    if (c == '\"') out += "\\\"";
+    else if (c == '\\') out += "\\\\";
+    else if (c == '\b') out += "\\b";
+    else if (c == '\f') out += "\\f";
+    else if (c == '\n') out += "\\n";
+    else if (c == '\r') out += "\\r";
+    else if (c == '\t') out += "\\t";
+    else if (static_cast<unsigned char>(c) < 0x20) {
+      char buf[8];
+      std::snprintf(buf, sizeof(buf), "\\u%04x", static_cast<unsigned char>(c));
+      out += buf;
+    } else {
+      out.push(static_cast<u8>(c));
+    }
+  }
+  out += "\"";
+  return out;
+}
+
+static String emitJSON(const Node<void> *node, int indentLevel, int indentSize) {
+  if (!node || node->isNull) return "null";
+
+  if (node->hasValue()) {
+    if (auto s = dynamic_cast<const Node<String> *>(node))
+      return escapeJSON(s->value);
+    if (auto i = dynamic_cast<const Node<long long> *>(node))
+      return String(i->value);
+    if (auto in = dynamic_cast<const Node<int> *>(node))
+      return String(in->value);
+    if (auto u = dynamic_cast<const Node<u64> *>(node))
+      return String(u->value);
+    if (auto uz = dynamic_cast<const Node<usz> *>(node))
+      return String(uz->value);
+    if (auto b = dynamic_cast<const Node<bool> *>(node))
+      return b->value ? "true" : "false";
+    if (auto f = dynamic_cast<const Node<f64> *>(node))
+      return String(f->value);
+    if (auto f3 = dynamic_cast<const Node<f32> *>(node))
+      return String(f3->value);
+    return "null";
+  }
+
+  if (node->isArray()) {
+    if (node->size() == 0) return "[]";
+    String res = "[\n";
+    bool first = true;
+    for (usz i = 0; i < node->size(); ++i) {
+      Node<void> *child = (*node)[i];
+      if (!child || child->name == "_comment") continue;
+      if (!first) res += ",\n";
+      first = false;
+      emitIdent(res, (indentLevel + 1) * indentSize);
+      res += emitJSON(child, indentLevel + 1, indentSize);
+    }
+    res += "\n";
+    emitIdent(res, indentLevel * indentSize);
+    res += "]";
+    return res;
+  }
+
+  // Object
+  if (node->size() == 0) return "{}";
+  String res = "{\n";
+  bool first = true;
+  for (usz i = 0; i < node->size(); ++i) {
+    Node<void> *child = (*node)[i];
+    if (!child || child->name == "_comment") continue;
+    if (!first) res += ",\n";
+    first = false;
+    emitIdent(res, (indentLevel + 1) * indentSize);
+    res += escapeJSON(child->name) + ": " + emitJSON(child, indentLevel + 1, indentSize);
+  }
+  res += "\n";
+  emitIdent(res, indentLevel * indentSize);
+  res += "}";
+  return res;
+}
+
 String YAML::toYAML(const Node<void> &root, int indent) {
   return emitValue(&root, 0, indent);
 }
 
 String YAML::toJSON(const Node<void> &root, int indent) {
-  return toYAML(root, indent);
+  return emitJSON(&root, 0, indent);
 }
 
 } // namespace Data
