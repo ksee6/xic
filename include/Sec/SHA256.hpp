@@ -25,6 +25,7 @@ public:
     String final();
 
     static String hash(const String& input);
+    static String hash(const void* data, usz len);
     static void hash(const void* data, usz len, u8 digest[DigestSize]);
 
 private:

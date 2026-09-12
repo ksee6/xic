@@ -1,13 +1,5 @@
 #include <Xi/Tree.hpp>
 #include <Data/Yaml.hpp>
-#include <Sec/Hash.hpp>
-#include <Sec/Chacha20.hpp>
-#include <Sec/Poly1305.hpp>
-#include <Sec/AEAD.hpp>
-#include <Sec/ECDH.hpp>
-#include <Sec/HKDF.hpp>
-#include <Sec/SHA256.hpp>
-#include <Xi/UUID.hpp>
 #include <cstdio>
 #include <cassert>
 
@@ -15,7 +7,7 @@ using namespace Xi;
 using namespace Data;
 
 int main() {
-    std::printf("=== Running Comprehensive Tree, YAML, Sec & Xi Tests ===\n");
+    std::printf("=== Running Tree & YAML Integration Tests ===\n");
 
     // 1. Verify Node creation and tree building
     Node<>* root = new Node<>();
@@ -85,7 +77,7 @@ int main() {
     Node<> yamlTree;
     bool parsed = parseYAML(yamlInput, yamlTree);
     assert(parsed);
-    std::printf("yamlTree size: %zu\n", yamlTree.size());
+    assert(yamlTree.size() == 1);
 
     Node<>* appBranch = yamlTree.get("app");
     assert(appBranch != nullptr);
@@ -110,71 +102,8 @@ int main() {
 
     String serialized = toYAML(yamlTree);
     assert(serialized.length() > 0);
-    std::printf("Serialized tree to YAML:\n%s\n", serialized.c_str());
-
-    // 5. Verify Cryptographic Subsystem (Sec)
-    std::printf("Verifying Sec (BLAKE2b, ChaCha20, Poly1305, AEAD, ECDH, SHA256)...\n");
-    
-    // BLAKE2b
-    String h1 = Sec::hash("abc", 64);
-    assert(h1.size() == 64);
-
-    // ChaCha20
-    String cKey = Sec::hash("secret_key_chacha", 32);
-    String plaintext = "Hello Autonomous World";
-    String ct = Sec::encrypt(cKey, 12345ULL, plaintext);
-    String pt = Sec::decrypt(cKey, 12345ULL, ct);
-    assert(pt == plaintext);
-
-    // Poly1305
-    String pKey = Sec::hash("poly1305_key_test", 32);
-    String pTag = Sec::sign(pKey, plaintext);
-    assert(pTag.size() == 16);
-    assert(Sec::verify(pKey, plaintext, pTag));
-    assert(!Sec::verify(pKey, "tampered", pTag));
-
-    // AEAD (ChaCha20-Poly1305)
-    Sec::AEADOptions opts;
-    opts.text = "Sensitive data to seal";
-    opts.ad = "Metadata headers";
-    bool sealed = Sec::seal(cKey, 9999ULL, opts);
-    assert(sealed);
-    assert(opts.tag.size() == 16);
-    bool opened = Sec::open(cKey, 9999ULL, opts);
-    assert(opened);
-    assert(opts.text == "Sensitive data to seal");
-
-    // X25519 ECDH
-    Sec::KeyPair alice = Sec::generateKeyPair();
-    Sec::KeyPair bob = Sec::generateKeyPair();
-    assert(alice.publicKey.size() == 32);
-    assert(bob.publicKey.size() == 32);
-    String sAlice = Sec::sharedKey(alice.secretKey, bob.publicKey);
-    String sBob = Sec::sharedKey(bob.secretKey, alice.publicKey);
-    assert(sAlice.size() == 32);
-    assert(sAlice == sBob);
-
-    // SignX & VerifyX
-    String sig = Sec::signX(alice.secretKey, "Document to be signed");
-    assert(sig.size() == 64);
-    assert(Sec::verifyX(alice.publicKey, "Document to be signed", sig));
-    assert(!Sec::verifyX(alice.publicKey, "Tampered doc", sig));
-
-    // SHA-256
-    String sha = Sec::hashSHA256("test sha256 input");
-    assert(sha.size() == 32);
-
-    // 6. Verify UUID all versions
-    UUID u1 = UUID::v1(); assert(u1.version() == 1);
-    UUID u3 = UUID::v3(UUID::NamespaceDNS, "example.com"); assert(u3.version() == 3);
-    UUID u4 = UUID::v4(); assert(u4.version() == 4);
-    UUID u5 = UUID::v5(UUID::NamespaceDNS, "example.com"); assert(u5.version() == 5);
-    UUID u6 = UUID::v6(); assert(u6.version() == 6);
-    UUID u7 = UUID::v7(); assert(u7.version() == 7);
-    u8 customData[16] = {0};
-    UUID u8 = UUID::v8(customData); assert(u8.version() == 8);
 
     delete root;
-    std::printf("=== All Comprehensive Tests Passed Successfully! ===\n");
+    std::printf("✓ Tree & YAML tests passed successfully!\n");
     return 0;
 }

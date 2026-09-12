@@ -50,9 +50,15 @@ public:
 
     // FNV hash support for Map
     static usz fnvHash(const DFAState &s) {
+#if __SIZEOF_SIZE_T__ == 4 || defined(__i386__) || defined(_M_IX86)
+      usz h = 2166136261U;
+      for (int pc : s.pcs)
+        h = (h ^ (usz)pc) * 16777619U;
+#else
       usz h = 14695981039346656037ULL;
       for (int pc : s.pcs)
         h = (h ^ (usz)pc) * 1099511628211ULL;
+#endif
       return h;
     }
   };

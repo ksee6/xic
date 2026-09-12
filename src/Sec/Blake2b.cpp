@@ -1,37 +1,12 @@
 /**
- * @file Hash.cpp
- * @brief Standalone, high-speed BLAKE2b implementation without external dependencies.
+ * @file Blake2b.cpp
+ * @brief Standalone, high-speed BLAKE2b and HKDF-BLAKE2b implementation.
  */
 
-#include "../../include/Sec/Hash.hpp"
+#include "../../include/Sec/Blake2b.hpp"
+#include "../../include/Xi/Xi.hpp"
 
 namespace Sec {
-
-static inline u64 rotr64(u64 w, unsigned c) {
-  return (w >> c) | (w << (64 - c));
-}
-
-static inline u64 load64_le(const u8 *src) {
-  return ((u64)src[0]) |
-         ((u64)src[1] << 8) |
-         ((u64)src[2] << 16) |
-         ((u64)src[3] << 24) |
-         ((u64)src[4] << 32) |
-         ((u64)src[5] << 40) |
-         ((u64)src[6] << 48) |
-         ((u64)src[7] << 56);
-}
-
-static inline void store64_le(u8 *dst, u64 w) {
-  dst[0] = (u8)(w);
-  dst[1] = (u8)(w >> 8);
-  dst[2] = (u8)(w >> 16);
-  dst[3] = (u8)(w >> 24);
-  dst[4] = (u8)(w >> 32);
-  dst[5] = (u8)(w >> 40);
-  dst[6] = (u8)(w >> 48);
-  dst[7] = (u8)(w >> 56);
-}
 
 static const u64 blake2b_iv[8] = {
   0x6a09e667f3bcc908ULL, 0xbb67ae8584caa73bULL,
@@ -140,22 +115,56 @@ void blake2bFinal(Blake2bCtx *ctx, void *pout) {
   for (usz i = 0; i < ctx->outlen; ++i) dst[i] = outbuf[i];
 }
 
-String hash(const String &input, int length, const String &key) {
+String B2B::hash(const String &input, int length, const String &key) {
+  return hash(input.data(), input.size(), length, key);
+}
+
+String B2B::hash(const void *data, usz len, int length, const String &key) {
   if (length > 64 || length < 1)
     return String();
-
-  String result;
-  u8 *buf = new u8[length];
 
   Blake2bCtx ctx;
   const void *keyData = key.isEmpty() ? nullptr : key.data();
   blake2bInit(&ctx, (usz)length, keyData, key.size());
-  blake2bUpdate(&ctx, input.data(), input.size());
+  if (data && len > 0) {
+    blake2bUpdate(&ctx, data, len);
+  }
+  u8 buf[64];
   blake2bFinal(&ctx, buf);
 
+  String result;
   result.pushEach(buf, (usz)length);
-  delete[] buf;
   return result;
 }
 
+String B2B::hkdf(const String &secret, const String &salt, const String &info, int length) {
+  const int hashLen = 64;
+  if (length <= 0 || length > 255 * hashLen)
+    return String();
+
+  // 1. Extract: PRK = BLAKE2b(secret, key = salt)
+  String prk = B2B::hash(secret, hashLen, salt);
+
+  // 2. Expand: T(i) = BLAKE2b(T(i-1) || info || counter, key = PRK)
+  int numBlocks = (length + hashLen - 1) / hashLen;
+  String okm;
+  String t;
+
+  for (int i = 1; i <= numBlocks; i++) {
+    String expandInput;
+    expandInput += t;
+    expandInput += info;
+    expandInput.push((u8)i);
+    t = B2B::hash(expandInput, hashLen, prk);
+    okm += t;
+  }
+
+  return okm.begin(0, length);
+}
+
+String B2B::hkdf(const String &secret, const String &info, int length) {
+  return hkdf(secret, String(), info, length);
+}
+
 } // namespace Sec
+

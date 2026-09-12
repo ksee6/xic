@@ -75,6 +75,105 @@ using i32 = int;            ///< Signed 32-bit integer.
 using u64 = unsigned long long; ///< Unsigned 64-bit integer.
 using i64 = long long;          ///< Signed 64-bit integer.
 
+#if defined(__SIZEOF_INT128__)
+using u128 = unsigned __int128;
+using i128 = __int128;
+#else
+struct u128 {
+  u64 lo;
+  u64 hi;
+
+  constexpr u128() : lo(0), hi(0) {}
+  constexpr u128(u64 v) : lo(v), hi(0) {}
+  constexpr u128(u64 h, u64 l) : lo(l), hi(h) {}
+
+  explicit operator u64() const { return lo; }
+  explicit operator bool() const { return lo != 0 || hi != 0; }
+
+  u128 operator+(const u128 &o) const {
+    u64 r_lo = lo + o.lo;
+    u64 r_hi = hi + o.hi + (r_lo < lo ? 1 : 0);
+    return u128(r_hi, r_lo);
+  }
+  u128 operator+(u64 v) const { return *this + u128(v); }
+  u128 &operator+=(const u128 &o) { *this = *this + o; return *this; }
+  u128 &operator+=(u64 v) { *this = *this + v; return *this; }
+
+  u128 operator-(const u128 &o) const {
+    u64 r_lo = lo - o.lo;
+    u64 r_hi = hi - o.hi - (lo < o.lo ? 1 : 0);
+    return u128(r_hi, r_lo);
+  }
+  u128 operator-(u64 v) const { return *this - u128(v); }
+  u128 &operator-=(const u128 &o) { *this = *this - o; return *this; }
+  u128 &operator-=(u64 v) { *this = *this - v; return *this; }
+
+  static u128 mul64(u64 a, u64 b) {
+    u64 a_lo = (u32)a, a_hi = a >> 32;
+    u64 b_lo = (u32)b, b_hi = b >> 32;
+
+    u64 p0 = a_lo * b_lo;
+    u64 p1 = a_lo * b_hi;
+    u64 p2 = a_hi * b_lo;
+    u64 p3 = a_hi * b_hi;
+
+    u64 mid = p1 + (p0 >> 32);
+    u64 mid2 = mid + p2;
+    u64 carry = (mid2 < mid ? (1ULL << 32) : 0);
+
+    u64 r_lo = (p0 & 0xffffffffULL) | (mid2 << 32);
+    u64 r_hi = p3 + (mid2 >> 32) + carry;
+    return u128(r_hi, r_lo);
+  }
+
+  u128 operator*(const u128 &o) const {
+    u128 res = mul64(lo, o.lo);
+    res.hi += lo * o.hi + hi * o.lo;
+    return res;
+  }
+  u128 operator*(u64 v) const { return *this * u128(v); }
+  u128 &operator*=(const u128 &o) { *this = *this * o; return *this; }
+  u128 &operator*=(u64 v) { *this = *this * v; return *this; }
+
+  u128 operator>>(unsigned int shift) const {
+    if (shift == 0) return *this;
+    if (shift >= 128) return u128(0);
+    if (shift >= 64) return u128(0, hi >> (shift - 64));
+    return u128(hi >> shift, (lo >> shift) | (hi << (64 - shift)));
+  }
+
+  u128 operator<<(unsigned int shift) const {
+    if (shift == 0) return *this;
+    if (shift >= 128) return u128(0);
+    if (shift >= 64) return u128((lo << (shift - 64)), 0);
+    return u128((hi << shift) | (lo >> (64 - shift)), lo << shift);
+  }
+
+  u128 operator&(const u128 &o) const { return u128(hi & o.hi, lo & o.lo); }
+  u128 operator&(u64 v) const { return u128(0, lo & v); }
+  u128 operator|(const u128 &o) const { return u128(hi | o.hi, lo | o.lo); }
+  u128 operator|(u64 v) const { return u128(hi, lo | v); }
+  u128 operator^(const u128 &o) const { return u128(hi ^ o.hi, lo ^ o.lo); }
+  u128 operator^(u64 v) const { return u128(hi, lo ^ v); }
+  u128 operator~() const { return u128(~hi, ~lo); }
+
+  bool operator==(const u128 &o) const { return lo == o.lo && hi == o.hi; }
+  bool operator!=(const u128 &o) const { return !(*this == o); }
+  bool operator<(const u128 &o) const { return hi < o.hi || (hi == o.hi && lo < o.lo); }
+  bool operator>(const u128 &o) const { return o < *this; }
+  bool operator<=(const u128 &o) const { return !(o < *this); }
+  bool operator>=(const u128 &o) const { return !(*this < o); }
+};
+
+inline u128 operator+(u64 a, const u128 &b) { return u128(a) + b; }
+inline u128 operator-(u64 a, const u128 &b) { return u128(a) - b; }
+inline u128 operator*(u64 a, const u128 &b) { return u128(a) * b; }
+inline u128 operator&(u64 a, const u128 &b) { return b & a; }
+inline u128 operator|(u64 a, const u128 &b) { return b | a; }
+inline u128 operator^(u64 a, const u128 &b) { return b ^ a; }
+#endif
+
+
 using f32 = float;  ///< 32-bit floating point.
 using f64 = double; ///< 64-bit floating point.
 
@@ -600,6 +699,76 @@ XI_EXPORT u32 random();
 XI_EXPORT u32 random(u32 max);
 XI_EXPORT i32 random(i32 min, i32 max);
 XI_EXPORT void randomFill(u8 *buffer, usz size);
+
+// -------------------------------------------------------------------------
+// Common Endian Load & Store Utilities
+// -------------------------------------------------------------------------
+
+static inline u16 load16_le(const u8 *p) {
+  return (u16)p[0] | ((u16)p[1] << 8);
+}
+static inline u32 load24_le(const u8 *p) {
+  return (u32)p[0] | ((u32)p[1] << 8) | ((u32)p[2] << 16);
+}
+static inline u32 load32_le(const u8 *p) {
+  return (u32)p[0] | ((u32)p[1] << 8) | ((u32)p[2] << 16) | ((u32)p[3] << 24);
+}
+static inline u64 load64_le(const u8 *p) {
+  return (u64)p[0] | ((u64)p[1] << 8) | ((u64)p[2] << 16) | ((u64)p[3] << 24) |
+         ((u64)p[4] << 32) | ((u64)p[5] << 40) | ((u64)p[6] << 48) | ((u64)p[7] << 56);
+}
+
+static inline void store16_le(u8 *p, u16 v) {
+  p[0] = (u8)(v & 0xff);
+  p[1] = (u8)((v >> 8) & 0xff);
+}
+static inline void store32_le(u8 *p, u32 v) {
+  p[0] = (u8)(v & 0xff);
+  p[1] = (u8)((v >> 8) & 0xff);
+  p[2] = (u8)((v >> 16) & 0xff);
+  p[3] = (u8)((v >> 24) & 0xff);
+}
+static inline void store64_le(u8 *p, u64 v) {
+  p[0] = (u8)(v & 0xff);
+  p[1] = (u8)((v >> 8) & 0xff);
+  p[2] = (u8)((v >> 16) & 0xff);
+  p[3] = (u8)((v >> 24) & 0xff);
+  p[4] = (u8)((v >> 32) & 0xff);
+  p[5] = (u8)((v >> 40) & 0xff);
+  p[6] = (u8)((v >> 48) & 0xff);
+  p[7] = (u8)((v >> 56) & 0xff);
+}
+
+static inline u32 load32_be(const u8 *p) {
+  return ((u32)p[0] << 24) | ((u32)p[1] << 16) | ((u32)p[2] << 8) | (u32)p[3];
+}
+static inline u64 load64_be(const u8 *p) {
+  return ((u64)p[0] << 56) | ((u64)p[1] << 48) | ((u64)p[2] << 40) | ((u64)p[3] << 32) |
+         ((u64)p[4] << 24) | ((u64)p[5] << 16) | ((u64)p[6] << 8) | (u64)p[7];
+}
+static inline void store32_be(u8 *p, u32 v) {
+  p[0] = (u8)((v >> 24) & 0xff);
+  p[1] = (u8)((v >> 16) & 0xff);
+  p[2] = (u8)((v >> 8) & 0xff);
+  p[3] = (u8)(v & 0xff);
+}
+static inline void store64_be(u8 *p, u64 v) {
+  p[0] = (u8)((v >> 56) & 0xff);
+  p[1] = (u8)((v >> 48) & 0xff);
+  p[2] = (u8)((v >> 40) & 0xff);
+  p[3] = (u8)((v >> 32) & 0xff);
+  p[4] = (u8)((v >> 24) & 0xff);
+  p[5] = (u8)((v >> 16) & 0xff);
+  p[6] = (u8)((v >> 8) & 0xff);
+  p[7] = (u8)(v & 0xff);
+}
+
+static inline u32 rotr32(u32 x, u32 n) {
+  return (x >> n) | (x << (32 - n));
+}
+static inline u64 rotr64(u64 x, u64 n) {
+  return (x >> n) | (x << (64 - n));
+}
 
 } // namespace Xi
 

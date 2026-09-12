@@ -7,7 +7,7 @@
 
 namespace Sec {
 
-typedef unsigned __int128 u128;
+using Xi::u128;
 
 static inline u64 load64_le(const u8 *p) {
   return ((u64)p[0]) | ((u64)p[1] << 8) | ((u64)p[2] << 16) | ((u64)p[3] << 24) |
@@ -124,7 +124,7 @@ String createPoly1305Key(const String &key, const String &nonce) {
   return streamXor(key, nonce, zero32, 0);
 }
 
-String sign(const String &key, const String &message) {
+String Poly1305::hash(const String &key, const String &message) {
   if (key.size() != 32)
     return String();
 
@@ -138,11 +138,11 @@ String sign(const String &key, const String &message) {
   return res;
 }
 
-bool verify(const String &key, const String &message, const String &tag) {
+bool Poly1305::verify(const String &key, const String &message, const String &tag) {
   if (tag.size() != 16)
     return false;
 
-  String computed = sign(key, message);
+  String computed = Poly1305::hash(key, message);
   return tag.constantTimeEquals(computed, 16);
 }
 

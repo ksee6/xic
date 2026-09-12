@@ -21,6 +21,8 @@ struct XI_EXPORT KeyPair {
   String secretKey; ///< The secret/private part of the key pair.
 };
 
+using Keypair = KeyPair;
+
 } // namespace Sec
 
 #endif // XI_SEC_KEY_HPP

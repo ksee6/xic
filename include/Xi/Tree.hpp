@@ -108,6 +108,61 @@ public:
   bool isNull = false;
 
   Node() = default;
+
+  Node(const Node<void> &o)
+      : parent(nullptr), name(o.name), tags(o.tags), isNull(o.isNull) {
+    for (usz i = 0; i < o.children.size(); ++i) {
+      if (o.children[i]) add(o.children[i]->clone());
+    }
+  }
+
+  Node(Node<void> &&o) noexcept
+      : parent(o.parent), name(Xi::Move(o.name)), tags(Xi::Move(o.tags)),
+        children(Xi::Move(o.children)), isNull(o.isNull) {
+    o.parent = nullptr;
+    o.children.clear();
+    for (usz i = 0; i < children.size(); ++i) {
+      if (children[i]) children[i]->parent = this;
+    }
+  }
+
+  Node<void> &operator=(const Node<void> &o) {
+    if (this != &o) {
+      for (usz i = 0; i < children.size(); ++i) {
+        delete children[i];
+      }
+      children.clear();
+      parent = nullptr;
+      name = o.name;
+      tags = o.tags;
+      isNull = o.isNull;
+      for (usz i = 0; i < o.children.size(); ++i) {
+        if (o.children[i]) add(o.children[i]->clone());
+      }
+    }
+    return *this;
+  }
+
+  Node<void> &operator=(Node<void> &&o) noexcept {
+    if (this != &o) {
+      for (usz i = 0; i < children.size(); ++i) {
+        delete children[i];
+      }
+      children.clear();
+      parent = o.parent;
+      name = Xi::Move(o.name);
+      tags = Xi::Move(o.tags);
+      children = Xi::Move(o.children);
+      isNull = o.isNull;
+      o.parent = nullptr;
+      o.children.clear();
+      for (usz i = 0; i < children.size(); ++i) {
+        if (children[i]) children[i]->parent = this;
+      }
+    }
+    return *this;
+  }
+
   virtual ~Node() {
     for (usz i = 0; i < children.size(); ++i) {
       delete children[i];
@@ -276,6 +331,8 @@ public:
   Array<Node<void> *> flatten();
 };
 
+using NodeBase = Node<void>;
+
 // -------------------------------------------------------------------------
 // Node<T> (Leaf Node with value)
 // -------------------------------------------------------------------------
@@ -288,6 +345,26 @@ public:
   Node() : Node<void>() {}
   Node(const T &v) : Node<void>(), value(v) {}
   Node(const String &n, const T &v) : Node<void>(), value(v) { name = n; }
+
+  Node(const Node<T> &o) : Node<void>(o), value(o.value) {}
+  Node(Node<T> &&o) noexcept : Node<void>(Xi::Move(o)), value(Xi::Move(o.value)) {}
+
+  Node<T> &operator=(const Node<T> &o) {
+    if (this != &o) {
+      Node<void>::operator=(o);
+      value = o.value;
+    }
+    return *this;
+  }
+
+  Node<T> &operator=(Node<T> &&o) noexcept {
+    if (this != &o) {
+      Node<void>::operator=(Xi::Move(o));
+      value = Xi::Move(o.value);
+    }
+    return *this;
+  }
+
   virtual ~Node() override = default;
 
   virtual bool hasValue() const override { return true; }

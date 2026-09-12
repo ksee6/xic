@@ -148,6 +148,12 @@ String SHA256::hash(const String& input) {
     return ctx.final();
 }
 
+String SHA256::hash(const void* data, usz len) {
+    SHA256 ctx;
+    ctx.update(data, len);
+    return ctx.final();
+}
+
 void SHA256::hash(const void* data, usz len, u8 digest[DigestSize]) {
     SHA256 ctx;
     ctx.update(data, len);
